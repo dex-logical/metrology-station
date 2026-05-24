@@ -14,10 +14,6 @@ Release/
 # Настройки IDE и временные файлы
 .settings/
 *.launch
-*.cproject
-*.project
-.cproject
-.project
 
 # ОС-мусор
 .DS_Store
