@@ -23,6 +23,7 @@
 /* USER CODE BEGIN Includes */
 #include "ssd1306.h"
 #include "ssd1306_fonts.h"
+#include "sr04.h"
 #include <stdio.h>
 /* USER CODE END Includes */
 
@@ -44,14 +45,17 @@
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 
-/* USER CODE BEGIN PV */
+TIM_HandleTypeDef htim3;
 
+/* USER CODE BEGIN PV */
+sr04_t sr04;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM3_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
@@ -91,10 +95,18 @@ int main(void)
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_I2C1_Init();
+  MX_TIM3_Init();
   /* USER CODE BEGIN 2 */
   ssd1306_Init();
   uint8_t current_state_screen = 0;
   uint8_t button_last_state = 1;
+  uint32_t last_activity = 0;
+  uint8_t display_on = 1;
+  sr04.trig_port = GPIOA;
+  sr04.trig_pin = GPIO_PIN_9;
+  sr04.echo_htim = &htim3;
+  sr04.echo_channel = TIM_CHANNEL_1;
+  sr04_init(&sr04);
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -103,34 +115,70 @@ int main(void)
   {
 	      // 1. Опрос кнопки
 	  uint8_t button_current_state = HAL_GPIO_ReadPin(GPIOC, GPIO_PIN_13);
-	 	  if(button_current_state == GPIO_PIN_RESET && button_last_state == 1)
-	 	  {
-	 	      current_state_screen += 1;
-	 	      if(current_state_screen > 1)
-	 	          current_state_screen = 0;
-	 	  }
-	 	  button_last_state = button_current_state;
+	  if(button_current_state == GPIO_PIN_RESET && button_last_state == 1)
+	  {
+	      current_state_screen += 1;
+	      if(current_state_screen > 2)
+	          current_state_screen = 0;
+	      last_activity = HAL_GetTick();
+	  }
+	  button_last_state = button_current_state;
 
-	      // 2. Формирование данных (заглушки до подключения нового датчика)
-	      float temp = 22.5f;
-	      float hum  = 45.0f;
+	  // Логика включения/выключения экрана
+	  if(sr04.distance < 500)  // ближе 50 см
+	  {
+	      last_activity = HAL_GetTick();
+	  }
+
+	  if(HAL_GetTick() - last_activity > 10000)  // 10 секунд бездействия
+	  {
+	      if(display_on)
+	      {
+	          ssd1306_SetDisplayOn(0);
+	          display_on = 0;
+	      }
+	  }
+	  else
+	  {
+	      if(!display_on)
+	      {
+	          ssd1306_SetDisplayOn(1);
+	          display_on = 1;
+	      }
+	  }
+
+	      // 2. Формирование данных
 	      char buf[32];
 
 	      // 3. Вывод на OLED
 	      ssd1306_Fill(0);
-	      if(current_state_screen == 0) {
-	          ssd1306_SetCursor(0, 0);
-	          ssd1306_WriteString("Temp:", Font_11x18, 1);
-	          sprintf(buf, "%.1f C", temp);
-	          ssd1306_SetCursor(0, 20);
-	          ssd1306_WriteString(buf, Font_11x18, 1);
-	      } else {
-	          ssd1306_SetCursor(0, 0);
-	          ssd1306_WriteString("Hum:", Font_11x18, 1);
-	          sprintf(buf, "%.1f %%", hum);
-	          ssd1306_SetCursor(0, 20);
-	          ssd1306_WriteString(buf, Font_11x18, 1);
+	      switch(current_state_screen)
+	      {
+			  case 0:
+				  ssd1306_SetCursor(0, 0);
+				  ssd1306_WriteString("Temp:", Font_11x18, 1);
+				  sprintf(buf, "-- C");
+				  ssd1306_SetCursor(0, 20);
+				  ssd1306_WriteString(buf, Font_11x18, 1);
+				  break;
+			  case 1:
+				  ssd1306_SetCursor(0, 0);
+				  ssd1306_WriteString("Hum:", Font_11x18, 1);
+				  sprintf(buf, "-- %%");
+				  ssd1306_SetCursor(0, 20);
+				  ssd1306_WriteString(buf, Font_11x18, 1);
+				  break;
+	          case 2:
+	              ssd1306_SetCursor(0, 0);
+	              ssd1306_WriteString("Dist:", Font_11x18, 1);
+	              sprintf(buf, "%lu mm", sr04.distance);
+	              ssd1306_SetCursor(0, 20);
+	              ssd1306_WriteString(buf, Font_11x18, 1);
+	              break;
 	      }
+	      sr04_trigger(&sr04);
+	      ssd1306_UpdateScreen();
+	      HAL_Delay(100);
 	      ssd1306_UpdateScreen();
 
     /* USER CODE END WHILE */
@@ -216,6 +264,54 @@ static void MX_I2C1_Init(void)
 }
 
 /**
+  * @brief TIM3 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM3_Init(void)
+{
+
+  /* USER CODE BEGIN TIM3_Init 0 */
+
+  /* USER CODE END TIM3_Init 0 */
+
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+  TIM_IC_InitTypeDef sConfigIC = {0};
+
+  /* USER CODE BEGIN TIM3_Init 1 */
+
+  /* USER CODE END TIM3_Init 1 */
+  htim3.Instance = TIM3;
+  htim3.Init.Prescaler = 83;
+  htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim3.Init.Period = 65535;
+  htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim3.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_IC_Init(&htim3) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim3, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sConfigIC.ICPolarity = TIM_INPUTCHANNELPOLARITY_RISING;
+  sConfigIC.ICSelection = TIM_ICSELECTION_DIRECTTI;
+  sConfigIC.ICPrescaler = TIM_ICPSC_DIV1;
+  sConfigIC.ICFilter = 0;
+  if (HAL_TIM_IC_ConfigChannel(&htim3, &sConfigIC, TIM_CHANNEL_1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM3_Init 2 */
+
+  /* USER CODE END TIM3_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
@@ -232,11 +328,21 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
 
+  /*Configure GPIO pin Output Level */
+  HAL_GPIO_WritePin(GPIOA, GPIO_PIN_9, GPIO_PIN_RESET);
+
   /*Configure GPIO pin : PC13 */
   GPIO_InitStruct.Pin = GPIO_PIN_13;
   GPIO_InitStruct.Mode = GPIO_MODE_INPUT;
   GPIO_InitStruct.Pull = GPIO_PULLUP;
   HAL_GPIO_Init(GPIOC, &GPIO_InitStruct);
+
+  /*Configure GPIO pin : PA9 */
+  GPIO_InitStruct.Pin = GPIO_PIN_9;
+  GPIO_InitStruct.Mode = GPIO_MODE_OUTPUT_PP;
+  GPIO_InitStruct.Pull = GPIO_NOPULL;
+  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
+  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
