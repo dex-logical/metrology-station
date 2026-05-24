@@ -1,8 +1,24 @@
+# Скомпилированные файлы (НЕ НУЖНЫ в Git)
+Build/
 Debug/
 Release/
 *.elf
+*.hex
 *.bin
+*.map
+*.lst
+*.su
 *.o
 *.d
-*.map
-*.list 
+
+# Настройки IDE и временные файлы
+.settings/
+*.launch
+*.cproject
+*.project
+.cproject
+.project
+
+# ОС-мусор
+.DS_Store
+Thumbs.db
