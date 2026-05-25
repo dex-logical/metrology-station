@@ -102,6 +102,7 @@ int main(void)
   uint8_t button_last_state = 1;
   uint32_t last_activity = 0;
   uint8_t display_on = 1;
+  uint8_t near_count = 0;
   sr04.trig_port = GPIOA;
   sr04.trig_pin = GPIO_PIN_9;
   sr04.echo_htim = &htim3;
@@ -124,13 +125,23 @@ int main(void)
 	  }
 	  button_last_state = button_current_state;
 
-	  // Логика включения/выключения экрана
-	  if(sr04.distance < 500)  // ближе 50 см
+	  // Логика близости
+	  if(sr04.distance < 500)
+	  {
+	      near_count++;
+	      if(near_count > 3) near_count = 3;
+	  }
+	  else
+	  {
+	      if(near_count > 0) near_count--;
+	  }
+	  if(near_count >= 3)
 	  {
 	      last_activity = HAL_GetTick();
 	  }
 
-	  if(HAL_GetTick() - last_activity > 10000)  // 10 секунд бездействия
+	  // Таймаут экрана
+	  if(HAL_GetTick() - last_activity > 10000)
 	  {
 	      if(display_on)
 	      {
@@ -147,39 +158,35 @@ int main(void)
 	      }
 	  }
 
-	      // 2. Формирование данных
-	      char buf[32];
-
-	      // 3. Вывод на OLED
-	      ssd1306_Fill(0);
-	      switch(current_state_screen)
-	      {
-			  case 0:
-				  ssd1306_SetCursor(0, 0);
-				  ssd1306_WriteString("Temp:", Font_11x18, 1);
-				  sprintf(buf, "-- C");
-				  ssd1306_SetCursor(0, 20);
-				  ssd1306_WriteString(buf, Font_11x18, 1);
-				  break;
-			  case 1:
-				  ssd1306_SetCursor(0, 0);
-				  ssd1306_WriteString("Hum:", Font_11x18, 1);
-				  sprintf(buf, "-- %%");
-				  ssd1306_SetCursor(0, 20);
-				  ssd1306_WriteString(buf, Font_11x18, 1);
-				  break;
-	          case 2:
-	              ssd1306_SetCursor(0, 0);
-	              ssd1306_WriteString("Dist:", Font_11x18, 1);
-	              sprintf(buf, "%lu mm", sr04.distance);
-	              ssd1306_SetCursor(0, 20);
-	              ssd1306_WriteString(buf, Font_11x18, 1);
-	              break;
-	      }
-	      sr04_trigger(&sr04);
-	      ssd1306_UpdateScreen();
-	      HAL_Delay(100);
-	      ssd1306_UpdateScreen();
+	  char buf[32];
+	  ssd1306_Fill(0);
+	  switch(current_state_screen)
+	  {
+	      case 0:
+	          ssd1306_SetCursor(0, 0);
+	          ssd1306_WriteString("Temp:", Font_11x18, 1);
+	          sprintf(buf, "-- C");
+	          ssd1306_SetCursor(0, 20);
+	          ssd1306_WriteString(buf, Font_11x18, 1);
+	          break;
+	      case 1:
+	          ssd1306_SetCursor(0, 0);
+	          ssd1306_WriteString("Hum:", Font_11x18, 1);
+	          sprintf(buf, "-- %%");
+	          ssd1306_SetCursor(0, 20);
+	          ssd1306_WriteString(buf, Font_11x18, 1);
+	          break;
+	      case 2:
+	          ssd1306_SetCursor(0, 0);
+	          ssd1306_WriteString("Dist:", Font_11x18, 1);
+	          sprintf(buf, "%lu mm", sr04.distance);
+	          ssd1306_SetCursor(0, 20);
+	          ssd1306_WriteString(buf, Font_11x18, 1);
+	          break;
+	  }
+	  sr04_trigger(&sr04);
+	  ssd1306_UpdateScreen();
+	  HAL_Delay(100);
 
     /* USER CODE END WHILE */
 
