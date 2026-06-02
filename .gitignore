@@ -18,3 +18,7 @@ Release/
 # ОС-мусор
 .DS_Store
 Thumbs.db
+
+# KiCad
+kicad/.history/
+kicad/*.lck
